@@ -1,0 +1,5 @@
+{
+  "name": "SATA - Sistema de Alerta Temprana Agrícola",
+  "description": "A comprehensive web application for monitoring high-value crops. It provides real-time sensor data, manages alert rules, contacts, and users, and generates historical reports with trend graphs to protect crops 24/7.",
+  "requestFramePermissions": []
+}

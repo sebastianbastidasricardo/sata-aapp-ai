@@ -1,6 +1,6 @@
 
-import { Contact, Greenhouse, AlertRule, User, Farm, PredictionLog, PredictionSettings, ScheduledReport, SystemSettings, UserRole, CompanyRole, AssetType, AssetLocation, AlertType, AlertLog } from '../types';
-import { MOCK_CONTACTS, MOCK_GREENHOUSES, MOCK_RULES, MOCK_USERS, MOCK_FARMS, MOCK_PREDICTION_HISTORY, MOCK_ALERT_LOGS } from '../constants';
+import { Contact, Greenhouse, AlertRule, User, Farm, PredictionLog, PredictionSettings, ScheduledReport, SystemSettings, UserRole, CompanyRole, AssetType, AssetLocation, AlertType, TelegramGroup, AlertLog } from '../types';
+import { MOCK_CONTACTS, MOCK_GREENHOUSES, MOCK_RULES, MOCK_USERS, MOCK_FARMS, MOCK_PREDICTION_HISTORY } from '../constants';
 import { sendEmailViaResend, generateAuthEmailHTML, generateInternalInviteHTML } from './emailService';
 import { getSupabaseClient } from './supabaseClient';
 
@@ -34,27 +34,77 @@ if (!localStorage.getItem('sata_users')) {
     setStore('sata_greenhouses', MOCK_GREENHOUSES);
     setStore('sata_farms', MOCK_FARMS);
     setStore('sata_predictions', MOCK_PREDICTION_HISTORY);
-    setStore('sata_alert_logs', MOCK_ALERT_LOGS);
 }
 
 const generateId = () => `id_${new Date().getTime()}_${Math.random()}`;
 
 // --- SYSTEM SETTINGS ---
-export const getSystemSettings = async (): Promise<SystemSettings> => {
+export const getSystemSettings = async (farmId?: string): Promise<SystemSettings> => {
+    // 1. Get Supabase credentials from LocalStorage (Maestra)
     const item = localStorage.getItem('sata_system_settings');
     const stored = item ? JSON.parse(item) : {};
     
-    const defaultSettings: SystemSettings = { 
-        resendApiKey: stored.resendApiKey || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', 
-        senderEmail: stored.senderEmail || 'onboarding@resend.dev',
+    const settings: SystemSettings = { 
+        resendApiKey: '', 
+        senderEmail: '',
         supabaseUrl: stored.supabaseUrl || '',
-        supabaseKey: stored.supabaseKey || ''
+        supabaseKey: stored.supabaseKey || '',
+        telegramBotToken: ''
     };
-    return new Promise(resolve => setTimeout(() => resolve(defaultSettings), 100)); 
+
+    // 2. Try to fetch API Keys from Supabase if we have a farmId
+    if (farmId) {
+        const supabase = await getSupabaseClient();
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('system_settings')
+                .select('*')
+                .eq('farm_id', farmId)
+                .single();
+            
+            if (!error && data) {
+                settings.resendApiKey = data.resend_api_key || '';
+                settings.senderEmail = data.sender_email || '';
+                settings.telegramBotToken = data.telegram_bot_token || '';
+            }
+        }
+    }
+
+    // 3. Fallback to LocalStorage if Supabase fetch failed or returned empty
+    if (!settings.resendApiKey) settings.resendApiKey = stored.resendApiKey || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV';
+    if (!settings.senderEmail) settings.senderEmail = stored.senderEmail || 'onboarding@resend.dev';
+    if (!settings.telegramBotToken) settings.telegramBotToken = stored.telegramBotToken || '';
+
+    return new Promise(resolve => setTimeout(() => resolve(settings), 100)); 
 };
 
-export const saveSystemSettings = async (settings: SystemSettings): Promise<void> => {
-    localStorage.setItem('sata_system_settings', JSON.stringify(settings));
+export const saveSystemSettings = async (settings: SystemSettings, farmId?: string): Promise<void> => {
+    // 1. Save Supabase credentials to LocalStorage (Always local)
+    const localData = {
+        supabaseUrl: settings.supabaseUrl,
+        supabaseKey: settings.supabaseKey,
+        resendApiKey: settings.resendApiKey, // Also keep local for quick access
+        senderEmail: settings.senderEmail,
+        telegramBotToken: settings.telegramBotToken
+    };
+    localStorage.setItem('sata_system_settings', JSON.stringify(localData));
+
+    // 2. Save API Keys to Supabase for persistence across devices
+    if (farmId) {
+        const supabase = await getSupabaseClient();
+        if (supabase) {
+            const dbPayload = {
+                farm_id: farmId,
+                resend_api_key: settings.resendApiKey,
+                sender_email: settings.senderEmail,
+                telegram_bot_token: settings.telegramBotToken,
+                updated_at: new Date().toISOString()
+            };
+            
+            await supabase.from('system_settings').upsert(dbPayload);
+        }
+    }
+
     return new Promise(resolve => setTimeout(() => resolve(), apiDelay));
 };
 
@@ -119,13 +169,6 @@ const seedCompanyData = async (farmId: string) => {
             ]);
 
             const now = new Date();
-            await supabase.from('alert_logs').insert([
-                { asset_id: createdAssets[0].id, alert_type: 'Temperatura Máxima', value: 32.5, notified_contacts: ['Ing. Agrónomo Jefe'], timestamp: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString() },
-                { asset_id: createdAssets[1].id, alert_type: 'Humedad Máxima', value: 88, notified_contacts: ['Supervisor de Turno'], timestamp: new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString() },
-                { asset_id: createdAssets[0].id, alert_type: 'Temperatura Mínima', value: 8.5, notified_contacts: ['Ing. Agrónomo Jefe'], timestamp: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString() },
-                { asset_id: createdAssets[2].id, alert_type: 'Temperatura Máxima', value: 29.0, notified_contacts: ['Gerente de Planta'], timestamp: new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString() }
-            ]);
-
             await supabase.from('prediction_logs').insert([
                 { 
                     asset_id: createdAssets[0].id, 
@@ -175,13 +218,6 @@ const seedCompanyData = async (farmId: string) => {
         const newUsers = teamUsers.map(u => ({ ...u, id: generateId(), farmId, role: u.role as UserRole, companyRole: u.company_role as CompanyRole }));
         const currentUsers = getStore<User>('sata_users', []);
         setStore('sata_users', [...currentUsers, ...newUsers]);
-
-        const newLogs: AlertLog[] = [
-             { id: generateId(), greenhouseId: newAssets[0].id, alertType: AlertType.TEMP_MAX, value: 32.5, notifiedContacts: ['Ing. Agrónomo Jefe'], timestamp: new Date(Date.now() - 2 * 3600 * 1000) },
-             { id: generateId(), greenhouseId: newAssets[1].id, alertType: AlertType.HUMIDITY_MAX, value: 88, notifiedContacts: ['Supervisor de Turno'], timestamp: new Date(Date.now() - 12 * 3600 * 1000) }
-        ];
-        const currentLogs = getStore<AlertLog>('sata_alert_logs', []);
-        setStore('sata_alert_logs', [...currentLogs, ...newLogs]);
     }
 };
 
@@ -784,22 +820,27 @@ export const deleteGreenhouse = async (id: string): Promise<{ id: string }> => {
 export const getRules = async (farmId?: string): Promise<AlertRule[]> => {
     const supabase = await getSupabaseClient();
     if (supabase) {
+        // We use a join to filter by farm_id through the assets table
         let query = supabase.from('alert_rules').select('*, assets!inner(farm_id)');
         if (farmId) {
             query = query.eq('assets.farm_id', farmId);
         }
         const { data, error } = await query;
-        if (!error && data) {
+        if (error) {
+            console.error("❌ Error fetching rules from Supabase:", error);
+        } else if (data) {
             return data.map((r: any) => ({
                 id: r.id,
                 greenhouseId: r.asset_id,
                 type: r.type as AlertType,
                 threshold: r.threshold,
-                contactIds: r.contact_ids || []
+                contactIds: r.contact_ids || [],
+                telegramGroupIds: r.telegram_group_ids || []
             }));
         }
     }
 
+    console.warn("⚠️ Falling back to LocalStorage for rules");
     const rules = getStore<AlertRule>('sata_rules', []);
     return new Promise(resolve => setTimeout(() => resolve([...rules]), apiDelay));
 };
@@ -811,22 +852,28 @@ export const addRule = async (rule: Omit<AlertRule, 'id'>): Promise<AlertRule> =
             asset_id: rule.greenhouseId,
             type: rule.type,
             threshold: rule.threshold,
-            contact_ids: rule.contactIds
+            contact_ids: rule.contactIds,
+            telegram_group_ids: rule.telegramGroupIds || []
         };
         const { data, error } = await supabase.from('alert_rules').insert([dbPayload]).select().single();
-        if (!error && data) {
+        if (error) {
+            console.error("❌ Error adding rule to Supabase:", error);
+            throw new Error(`Error al guardar la regla en la base de datos: ${error.message}`);
+        }
+        if (data) {
             return {
                 id: data.id,
                 greenhouseId: data.asset_id,
                 type: data.type,
                 threshold: data.threshold,
-                contactIds: data.contact_ids
+                contactIds: data.contact_ids,
+                telegramGroupIds: data.telegram_group_ids || []
             };
         }
     }
 
     const rules = getStore<AlertRule>('sata_rules', []);
-    const newRule = { ...rule, id: generateId() };
+    const newRule: AlertRule = { ...rule, id: generateId(), telegramGroupIds: rule.telegramGroupIds || [] };
     const updatedRules = [...rules, newRule];
     setStore('sata_rules', updatedRules);
     return new Promise(resolve => setTimeout(() => resolve(newRule), apiDelay));
@@ -839,9 +886,14 @@ export const updateRule = async (updatedRule: AlertRule): Promise<AlertRule> => 
             asset_id: updatedRule.greenhouseId,
             type: updatedRule.type,
             threshold: updatedRule.threshold,
-            contact_ids: updatedRule.contactIds
+            contact_ids: updatedRule.contactIds,
+            telegram_group_ids: updatedRule.telegramGroupIds || []
         };
-        await supabase.from('alert_rules').update(dbPayload).eq('id', updatedRule.id);
+        const { error } = await supabase.from('alert_rules').update(dbPayload).eq('id', updatedRule.id);
+        if (error) {
+            console.error("❌ Error updating rule in Supabase:", error);
+            throw new Error(`Error al actualizar la regla en la base de datos: ${error.message}`);
+        }
         return updatedRule;
     }
 
@@ -1047,31 +1099,6 @@ export const deleteFarm = async (id: string): Promise<{ id: string }> => {
     return new Promise(resolve => setTimeout(() => resolve({ id }), apiDelay));
 };
 
-// --- ALERT LOGS API ---
-export const getAlertLogs = async (farmId?: string): Promise<AlertLog[]> => {
-    const supabase = await getSupabaseClient();
-    if (supabase) {
-        let query = supabase.from('alert_logs').select('*, assets!inner(farm_id)');
-        if (farmId) {
-            query = query.eq('assets.farm_id', farmId);
-        }
-        const { data, error } = await query;
-        if (!error && data) {
-            return data.map((l: any) => ({
-                id: l.id,
-                timestamp: new Date(l.timestamp),
-                greenhouseId: l.asset_id,
-                alertType: l.alert_type as AlertType,
-                value: l.value,
-                notifiedContacts: l.notified_contacts || []
-            }));
-        }
-    }
-    
-    const logs = getStore<AlertLog>('sata_alert_logs', []);
-    return new Promise(resolve => setTimeout(() => resolve([...logs]), apiDelay));
-};
-
 // --- PREDICTION API ---
 export const getPredictionHistory = async (farmId?: string): Promise<PredictionLog[]> => {
     const supabase = await getSupabaseClient();
@@ -1201,4 +1228,111 @@ export const deleteScheduledReport = async (id: string): Promise<{ id: string }>
     reports = reports.filter(r => r.id !== id);
     setStore('sata_scheduled_reports', reports);
     return new Promise(resolve => setTimeout(() => resolve({ id }), apiDelay));
+};
+
+// --- TELEGRAM GROUPS API ---
+export const getTelegramGroups = async (farmId?: string): Promise<TelegramGroup[]> => {
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+        let query = supabase.from('telegram_groups').select('*');
+        if (farmId) {
+            query = query.eq('farm_id', farmId);
+        }
+        const { data, error } = await query;
+        if (!error && data) {
+            return data.map((g: any) => ({
+                id: g.id,
+                chatId: g.chat_id,
+                name: g.name,
+                isActive: g.is_active,
+                farmId: g.farm_id
+            }));
+        }
+    }
+
+    const groups = getStore<TelegramGroup>('sata_telegram_groups', []);
+    return new Promise(resolve => {
+        setTimeout(() => resolve(farmId ? groups.filter(g => g.farmId === farmId) : [...groups]), apiDelay);
+    });
+};
+
+export const addTelegramGroup = async (group: Omit<TelegramGroup, 'id'>): Promise<TelegramGroup> => {
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+        const payload = { 
+            name: group.name, 
+            chat_id: group.chatId, 
+            is_active: group.isActive,
+            farm_id: group.farmId 
+        };
+        const { data, error } = await supabase.from('telegram_groups').insert([payload]).select().single();
+        if (!error && data) return { id: data.id, name: data.name, chatId: data.chat_id, isActive: data.is_active, farmId: data.farm_id };
+    }
+
+    const groups = getStore<TelegramGroup>('sata_telegram_groups', []);
+    const newGroup = { ...group, id: generateId() };
+    const updatedGroups = [...groups, newGroup];
+    setStore('sata_telegram_groups', updatedGroups);
+    return new Promise(resolve => setTimeout(() => resolve(newGroup), apiDelay));
+};
+
+export const updateTelegramGroup = async (updatedGroup: TelegramGroup): Promise<TelegramGroup> => {
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+        const payload = { 
+            name: updatedGroup.name, 
+            chat_id: updatedGroup.chatId, 
+            is_active: updatedGroup.isActive
+        };
+        const { error } = await supabase.from('telegram_groups').update(payload).eq('id', updatedGroup.id);
+        if (!error) return updatedGroup;
+    }
+
+    let groups = getStore<TelegramGroup>('sata_telegram_groups', []);
+    groups = groups.map(g => g.id === updatedGroup.id ? updatedGroup : g);
+    setStore('sata_telegram_groups', groups);
+    return new Promise(resolve => setTimeout(() => resolve(updatedGroup), apiDelay));
+};
+
+export const deleteTelegramGroup = async (id: string): Promise<{ id: string }> => {
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+        await supabase.from('telegram_groups').delete().eq('id', id);
+        return { id };
+    }
+
+    let groups = getStore<TelegramGroup>('sata_telegram_groups', []);
+    groups = groups.filter(g => g.id !== id);
+    setStore('sata_telegram_groups', groups);
+    return new Promise(resolve => setTimeout(() => resolve({ id }), apiDelay));
+};
+
+// --- ALERT LOGS API ---
+export const getAlertLogs = async (farmId?: string): Promise<AlertLog[]> => {
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+        let query = supabase.from('alert_logs').select('*, assets!inner(farm_id)');
+        if (farmId) {
+            query = query.eq('assets.farm_id', farmId);
+        }
+        const { data, error } = await query.order('timestamp', { ascending: false });
+        if (!error && data) {
+            return data.map((l: any) => ({
+                id: l.id,
+                greenhouseId: l.asset_id,
+                alertType: l.alert_type,
+                value: l.value,
+                timestamp: l.timestamp,
+                notifiedContacts: l.notified_contacts || []
+            }));
+        }
+    }
+
+    // Mock data for fallback
+    const mockLogs: AlertLog[] = [
+        { id: '1', greenhouseId: 'id_1', alertType: 'Temperatura Máxima', value: 32.5, timestamp: new Date().toISOString(), notifiedContacts: ['Admin', 'Jefe'] },
+        { id: '2', greenhouseId: 'id_2', alertType: 'Humedad Máxima', value: 88.0, timestamp: new Date(Date.now() - 3600000).toISOString(), notifiedContacts: ['Gerente'] }
+    ];
+    
+    return new Promise(resolve => setTimeout(() => resolve(mockLogs), apiDelay));
 };

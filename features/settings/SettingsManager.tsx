@@ -434,12 +434,18 @@ const AssetSettings: React.FC<{ farms: Farm[], currentUser: User }> = ({ farms, 
 };
 
 const IntegrationSettings: React.FC<{ currentUser: User }> = ({ currentUser }) => {
-    const [settings, setSettings] = useState<SystemSettings>({ resendApiKey: '', senderEmail: '', supabaseUrl: '', supabaseKey: '' });
+    const [settings, setSettings] = useState<SystemSettings>({ 
+        resendApiKey: '', 
+        senderEmail: '', 
+        supabaseUrl: '', 
+        supabaseKey: '',
+        telegramBotToken: ''
+    });
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
-        getSystemSettings().then(setSettings);
-    }, []);
+        getSystemSettings(currentUser.farmId).then(setSettings);
+    }, [currentUser.farmId]);
 
     const handleSave = async () => {
         if (currentUser.companyRole !== 'owner') {
@@ -452,13 +458,14 @@ const IntegrationSettings: React.FC<{ currentUser: User }> = ({ currentUser }) =
             supabaseUrl: settings.supabaseUrl?.trim(),
             supabaseKey: settings.supabaseKey?.trim(),
             resendApiKey: settings.resendApiKey.trim(),
-            senderEmail: settings.senderEmail.trim()
+            senderEmail: settings.senderEmail.trim(),
+            telegramBotToken: settings.telegramBotToken?.trim()
         };
 
         setIsLoading(true);
-        await saveSystemSettings(sanitizedSettings);
+        await saveSystemSettings(sanitizedSettings, currentUser.farmId);
         setIsLoading(false);
-        alert('Configuración guardada. La aplicación se recargará para aplicar la nueva conexión.');
+        alert('Configuración guardada en la nube. La aplicación se recargará para aplicar los cambios.');
         window.location.reload();
     };
 
@@ -485,6 +492,22 @@ const IntegrationSettings: React.FC<{ currentUser: User }> = ({ currentUser }) =
                     />
                     <div className="bg-slate-800 p-2 rounded text-xs text-slate-400">
                         Requiere verificar dominio en Resend para envíos a terceros.
+                    </div>
+                </div>
+
+                <div className="border-b border-slate-700 pb-6">
+                    <h3 className="text-lg font-bold text-slate-200 mb-2 flex items-center">
+                        <span className="text-sky-400 mr-2">✈️</span> Notificaciones (Telegram)
+                    </h3>
+                    <Input 
+                        label="Telegram Bot Token" 
+                        value={settings.telegramBotToken || ''} 
+                        onChange={e => setSettings({...settings, telegramBotToken: e.target.value})} 
+                        placeholder="123456789:ABCDefgh..."
+                        type="password"
+                    />
+                    <div className="bg-slate-800 p-2 rounded text-xs text-slate-400">
+                        Obtén este token desde @BotFather en Telegram.
                     </div>
                 </div>
 

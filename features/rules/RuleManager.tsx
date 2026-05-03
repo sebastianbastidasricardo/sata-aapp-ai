@@ -1,8 +1,8 @@
 
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertRule, Contact, Greenhouse, AlertType, User } from '../../types';
-import { getRules, addRule, updateRule, deleteRule, getContacts, getGreenhouses } from '../../services/api';
+import { AlertRule, Contact, Greenhouse, AlertType, User, TelegramGroup } from '../../types';
+import { getRules, addRule, updateRule, deleteRule, getContacts, getGreenhouses, getTelegramGroups } from '../../services/api';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
@@ -14,6 +14,7 @@ import { ICONS } from '../../constants';
 const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
     const [rules, setRules] = useState<AlertRule[]>([]);
     const [contacts, setContacts] = useState<Contact[]>([]);
+    const [telegramGroups, setTelegramGroups] = useState<TelegramGroup[]>([]);
     const [greenhouses, setGreenhouses] = useState<Greenhouse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,18 +28,21 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
     const [alertType, setAlertType] = useState<AlertType>(AlertType.TEMP_MAX);
     const [threshold, setThreshold] = useState<number | ''>('');
     const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+    const [selectedTelegramGroups, setSelectedTelegramGroups] = useState<string[]>([]);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         const farmId = currentUser.farmId;
-        const [rulesData, contactsData, greenhousesData] = await Promise.all([
+        const [rulesData, contactsData, greenhousesData, telegramGroupsData] = await Promise.all([
             getRules(farmId),
             getContacts(farmId),
-            getGreenhouses(farmId)
+            getGreenhouses(farmId),
+            getTelegramGroups(farmId)
         ]);
         setRules(rulesData);
         setContacts(contactsData);
         setGreenhouses(greenhousesData);
+        setTelegramGroups(telegramGroupsData);
         if (greenhousesData.length > 0 && !greenhouseId) {
             setGreenhouseId(greenhousesData[0].id);
         }
@@ -54,6 +58,7 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
         setAlertType(AlertType.TEMP_MAX);
         setThreshold('');
         setSelectedContacts([]);
+        setSelectedTelegramGroups([]);
         setCurrentRule(null);
     };
 
@@ -73,6 +78,7 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
             setAlertType(rule.type);
             setThreshold(rule.threshold);
             setSelectedContacts(rule.contactIds);
+            setSelectedTelegramGroups(rule.telegramGroupIds || []);
         }
         setIsModalOpen(true);
     };
@@ -83,21 +89,38 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
     };
 
     const handleSubmit = async () => {
-        if (threshold === '' || selectedContacts.length === 0) {
-            alert("Por favor, complete todos los campos.");
+        if (threshold === '') {
+            alert("Por favor, ingrese un umbral para la alerta.");
+            return;
+        }
+
+        if (selectedContacts.length === 0 && selectedTelegramGroups.length === 0) {
+            alert("Debe seleccionar al menos un medio de notificación (SMS o Telegram).");
             return;
         }
         
-        const ruleData = { greenhouseId, type: alertType, threshold: Number(threshold), contactIds: selectedContacts };
+        const ruleData = { 
+            greenhouseId, 
+            type: alertType, 
+            threshold: Number(threshold), 
+            contactIds: selectedContacts,
+            telegramGroupIds: selectedTelegramGroups
+        };
         setIsSubmitting(true);
-        if (currentRule) {
-            await updateRule({ ...currentRule, ...ruleData });
-        } else {
-            await addRule(ruleData);
+        try {
+            if (currentRule) {
+                await updateRule({ ...currentRule, ...ruleData });
+            } else {
+                await addRule(ruleData);
+            }
+            await fetchData();
+            handleCloseModal();
+        } catch (error: any) {
+            console.error(error);
+            alert(error.message || "Ocurrió un error al guardar la regla.");
+        } finally {
+            setIsSubmitting(false);
         }
-        await fetchData();
-        setIsSubmitting(false);
-        handleCloseModal();
     };
     
     const openDeleteModal = (rule: AlertRule) => {
@@ -137,7 +160,23 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
 
     const columns = [
         { header: 'Descripción de la Regla', accessor: (item: AlertRule) => getRuleDescription(item) },
-        { header: 'Contactos a Notificar', accessor: (item: AlertRule) => item.contactIds.map(id => contacts.find(c=>c.id === id)?.name || 'N/A').join(', ') },
+        { header: 'Notificaciones', accessor: (item: AlertRule) => (
+            <div className="text-xs space-y-1">
+                {item.contactIds.length > 0 && (
+                    <div className="text-slate-300">
+                        <span className="font-semibold text-primary">SMS:</span> {item.contactIds.map(id => contacts.find(c=>c.id === id)?.name || 'N/A').join(', ')}
+                    </div>
+                )}
+                {item.telegramGroupIds && item.telegramGroupIds.length > 0 && (
+                    <div className="text-sky-400">
+                        <span className="font-semibold">Telegram:</span> {item.telegramGroupIds.map(id => telegramGroups.find(g=>g.id === id)?.name || 'N/A').join(', ')}
+                    </div>
+                )}
+                {item.contactIds.length === 0 && (!item.telegramGroupIds || item.telegramGroupIds.length === 0) && (
+                    <span className="text-slate-500 italic">Sin notificaciones configuradas</span>
+                )}
+            </div>
+        )},
         {
             header: 'Acciones',
             accessor: (item: AlertRule) => (
@@ -189,12 +228,12 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
                 </Select>
                 <Input label="Umbral" type="number" value={threshold} onChange={e => setThreshold(e.target.value === '' ? '' : Number(e.target.value))} placeholder="Ej: 30"/>
                 <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Notificar a:</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Notificar por SMS a:</label>
                     <div className="space-y-2 max-h-40 overflow-y-auto border border-border p-3 rounded-md bg-slate-700">
-                        {contacts.length === 0 ? (
-                            <p className="text-xs text-slate-400">No hay contactos registrados. Vaya a la sección Contactos.</p>
+                        {contacts.filter(c => c.phone).length === 0 ? (
+                            <p className="text-xs text-slate-400">No hay contactos con teléfono registrado. Vaya a la sección Contactos.</p>
                         ) : (
-                            contacts.map(contact => (
+                            contacts.filter(c => c.phone).map(contact => (
                                 <label key={contact.id} className="flex items-center cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -209,6 +248,33 @@ const RuleManager: React.FC<{currentUser: User}> = ({ currentUser }) => {
                                         }}
                                     />
                                     <span className="ml-3 text-sm text-slate-300">{contact.name} ({contact.phone})</span>
+                                </label>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                <div className="mt-4">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Notificar a Grupos de Telegram:</label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto border border-border p-3 rounded-md bg-slate-700">
+                        {telegramGroups.length === 0 ? (
+                            <p className="text-xs text-slate-400">No hay grupos de Telegram registrados. Vaya a la sección Grupos Notificados.</p>
+                        ) : (
+                            telegramGroups.map(group => (
+                                <label key={group.id} className="flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4 text-primary bg-slate-600 border-slate-500 rounded focus:ring-primary focus:ring-offset-card"
+                                        checked={selectedTelegramGroups.includes(group.id)}
+                                        onChange={() => {
+                                            setSelectedTelegramGroups(prev =>
+                                                prev.includes(group.id)
+                                                    ? prev.filter(id => id !== group.id)
+                                                    : [...prev, group.id]
+                                            );
+                                        }}
+                                    />
+                                    <span className="ml-3 text-sm text-slate-300">{group.name}</span>
                                 </label>
                             ))
                         )}

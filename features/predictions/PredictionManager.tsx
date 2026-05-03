@@ -310,7 +310,7 @@ const SettingsTab: React.FC<{currentUser?: User}> = ({currentUser}) => {
 
     const handleSave = async () => {
         // Validation for Email
-        const systemSettings = await getSystemSettings();
+        const systemSettings = await getSystemSettings(currentUser.farmId);
         if (settings.dailySummaryContactIds.length > 0 && !systemSettings.resendApiKey) {
             alert('Atención: Has habilitado notificaciones por correo, pero no has configurado la API Key de Resend en la sección "Configuración -> Integraciones". Los correos no se enviarán.');
         }

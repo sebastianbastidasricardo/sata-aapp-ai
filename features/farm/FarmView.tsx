@@ -5,10 +5,10 @@ import Dashboard from '../Dashboard';
 import ContactManager from '../contacts/ContactManager';
 import RuleManager from '../rules/RuleManager';
 import ReportGenerator from '../reports/ReportGenerator';
-import AlertLogViewer from '../logs/AlertLogViewer';
 import SettingsManager from '../settings/SettingsManager';
 import UserManager from '../users/UserManager';
 import PredictionManager from '../predictions/PredictionManager';
+import NotificationGroups from '../notifications/NotificationGroups';
 import { User, Page } from '../../types';
 
 interface FarmViewProps {
@@ -29,14 +29,14 @@ const FarmView: React.FC<FarmViewProps> = ({ user, onLogout }) => {
                 return <RuleManager currentUser={user} />;
             case 'reports':
                 return <ReportGenerator currentUser={user} />;
-            case 'logs':
-                return <AlertLogViewer currentUser={user} />;
             case 'users':
                 return <UserManager currentUser={user} />;
             case 'settings':
                 return <SettingsManager user={user} />;
             case 'predictions':
                 return <PredictionManager currentUser={user} />;
+            case 'notification_groups':
+                return <NotificationGroups currentUser={user} />;
             default:
                 return <Dashboard currentUser={user} />;
         }

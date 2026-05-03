@@ -15,8 +15,8 @@ const farmNavItems: NavItem[] = [
     { page: 'rules', label: 'Reglas de Alerta', icon: ICONS.rules },
     { page: 'reports', label: 'Reportes', icon: ICONS.reports },
     { page: 'predictions', label: 'Predicciones AI', icon: ICONS.brain },
-    { page: 'logs', label: 'Log de Alertas', icon: ICONS.logs },
     { page: 'users', label: 'Usuarios', icon: ICONS.users },
+    { page: 'notification_groups', label: 'Grupos Notificados', icon: ICONS.telegram },
     { page: 'settings', label: 'Configuración', icon: ICONS.settings },
 ];
 

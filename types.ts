@@ -33,15 +33,7 @@ export interface AlertRule {
   type: AlertType;
   threshold: number;
   contactIds: string[];
-}
-
-export interface AlertLog {
-  id: string;
-  timestamp: Date;
-  greenhouseId: string;
-  alertType: AlertType;
-  value: number;
-  notifiedContacts: string[]; // array of contact names
+  telegramGroupIds?: string[];
 }
 
 export type UserRole = 'sata_admin' | 'sata_tech' | 'farm_user';
@@ -120,6 +112,24 @@ export interface SystemSettings {
     senderEmail: string; // e.g., 'onboarding@resend.dev' or 'alerts@sata.com'
     supabaseUrl?: string;
     supabaseKey?: string;
+    telegramBotToken?: string;
 }
 
-export type Page = 'dashboard' | 'contacts' | 'rules' | 'reports' | 'logs' | 'users' | 'settings' | 'predictions';
+export interface AlertLog {
+    id: string;
+    greenhouseId: string;
+    alertType: string;
+    value: number;
+    timestamp: string;
+    notifiedContacts: string[];
+}
+
+export type Page = 'dashboard' | 'contacts' | 'rules' | 'reports' | 'users' | 'settings' | 'predictions' | 'notification_groups';
+
+export interface TelegramGroup {
+    id: string;
+    chatId: string;
+    name: string;
+    isActive: boolean;
+    farmId: string;
+}

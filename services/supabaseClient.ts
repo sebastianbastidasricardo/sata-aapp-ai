@@ -55,7 +55,13 @@ export const getSupabaseClient = async (): Promise<any | null> => {
 
             console.log("☁️ Connecting to Supabase...");
             try {
-                supabaseInstance = createClient(settings.supabaseUrl.trim(), settings.supabaseKey.trim());
+                // EXPLICIT FETCH: We pass the native window.fetch to prevent the library 
+                // from trying to polyfill it or causing assignments to the read-only window.fetch property.
+                supabaseInstance = createClient(settings.supabaseUrl.trim(), settings.supabaseKey.trim(), {
+                    global: {
+                        fetch: (...args) => window.fetch(...args)
+                    }
+                });
                 return supabaseInstance;
             } catch (clientError) {
                 console.error("❌ Error during createClient execution:", clientError);

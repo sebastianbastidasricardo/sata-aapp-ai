@@ -156,7 +156,7 @@ const NotificationGroups: React.FC<NotificationGroupsProps> = ({ currentUser }) 
                     <div className="space-y-4 text-sm text-slate-400">
                         <div className="flex space-x-3">
                             <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">1</div>
-                            <p>Agrega nuestro Bot de SATA a tu grupo de Telegram.</p>
+                            <p>Agrega nuestro Bot de SATA (<strong>@SATA_ALERTAS_BOT</strong>) a tu grupo de Telegram.</p>
                         </div>
                         <div className="flex space-x-3">
                             <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">2</div>

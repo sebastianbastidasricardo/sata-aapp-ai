@@ -2,17 +2,13 @@
 import { SystemSettings } from '../types';
 
 const getLocalSystemSettings = (): SystemSettings => {
-    try {
-        const item = localStorage.getItem('sata_system_settings');
-        const stored = item ? JSON.parse(item) : {};
-        return { 
-            resendApiKey: stored.resendApiKey || '', 
-            senderEmail: stored.senderEmail || '',
-            telegramBotToken: stored.telegramBotToken || ''
-        };
-    } catch (e) {
-        return { resendApiKey: '', senderEmail: '', telegramBotToken: '' };
-    }
+    return { 
+        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || '', 
+        senderEmail: import.meta.env.VITE_SENDER_EMAIL || '',
+        telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    };
 };
 
 export const sendTelegramMessage = async (chatId: string, message: string): Promise<{ success: boolean; message: string }> => {

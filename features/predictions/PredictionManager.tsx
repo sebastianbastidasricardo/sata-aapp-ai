@@ -10,8 +10,8 @@ import Button from '../../components/Button';
 import Select from '../../components/Select';
 import Table from '../../components/Table';
 import { Greenhouse, Prediction, RiskLevel, PredictionLog, Farm, Contact, User } from '../../types';
-import { getGreenhouses, getPredictionHistory, getFarms, getContacts, getPredictionSettings, savePredictionSettings, getSystemSettings } from '../../services/api';
-import { analyzeAssetRisk, generateSimulatedHistory, SimulatedMetric } from '../../services/aiEngine';
+import { getGreenhouses, getPredictionHistory, getFarms, getContacts, getPredictionSettings, savePredictionSettings, getSystemSettings, getDbSensorReadings } from '../../services/api';
+import { analyzeAssetRisk, SimulatedMetric } from '../../services/aiEngine';
 import { ICONS } from '../../constants';
 
 // --- Sub-components ---
@@ -133,16 +133,37 @@ const LiveMonitorTab: React.FC<{ assets: Greenhouse[] }> = ({ assets }) => {
         if (!selectedAssetId) return;
         setIsAnalyzing(true);
         setPredictions([]); 
-        const timer = setTimeout(() => {
+        
+        const loadHistoryAndAnalyze = async () => {
             const asset = assets.find(a => a.id === selectedAssetId);
             if (asset) {
-                const history = generateSimulatedHistory(asset.id);
+                const dbReadings = await getDbSensorReadings(asset.farmId || '', 100);
+                const assetReadings = dbReadings.filter(r => r.assetId === selectedAssetId);
+                
+                // Map to SimulatedMetric shape
+                const history = assetReadings.map((r, i) => ({
+                    hour: i % 24, // Simple modulo 24 for the scatter plot
+                    temp: r.temperature,
+                    hum: r.humidity
+                }));
+
+                // Fallback if no data
+                if (history.length === 0) {
+                    for(let i=0; i<24; i++) history.push({ hour: i, temp: 22, hum: 60 });
+                }
+
                 setHistoryData(history);
                 const results = analyzeAssetRisk(asset, history);
                 setPredictions(results);
             }
             setIsAnalyzing(false);
+        };
+
+        // Adding slight timeout for UI effect
+        const timer = setTimeout(() => {
+            loadHistoryAndAnalyze();
         }, 1200);
+
         return () => clearTimeout(timer);
     }, [selectedAssetId, assets]);
 

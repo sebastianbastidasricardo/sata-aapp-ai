@@ -8,71 +8,124 @@ import Card from '../components/Card';
 import { ICONS } from '../constants';
 import { Greenhouse, SensorReading, Prediction, User } from '../types';
 import { analyzeAssetRisk, generateSimulatedHistory } from '../services/aiEngine';
-import { getGreenhouses, getFarms } from '../services/api';
+import { getGreenhouses, getFarms, insertSensorReading, getDbSensorReadings } from '../services/api';
 
-// --- Simulation Hook ---
-const useSensorSimulation = (assets: Greenhouse[]) => {
+// --- Simulation Hook (Hybrid Real/Local) ---
+const useSensorSimulation = (assets: Greenhouse[], farmId: string | undefined, isSimulatorActive: boolean) => {
     const [readings, setReadings] = useState<Record<string, SensorReading>>({});
+    const [dbLastFetch, setDbLastFetch] = useState<number>(Date.now());
 
-    // Initialize random readings
+    // Local state variables to persist battery simulated drain
+    const [batteries, setBatteries] = useState<Record<string, number>>({});
+
+    // Fetch initial history from DB (when component mounts or assets change)
     useEffect(() => {
-        const initialReadings: Record<string, SensorReading> = {};
-        assets.forEach(asset => {
-            initialReadings[asset.id] = {
-                assetId: asset.id,
-                temperature: 20 + Math.random() * 10, // 20-30°C
-                humidity: 50 + Math.random() * 30,    // 50-80%
-                battery: 80 + Math.random() * 20,     // 80-100%
-                history: Array.from({ length: 10 }, (_, i) => ({
-                    time: new Date(Date.now() - (10 - i) * 10000).toLocaleTimeString(),
-                    temp: 20 + Math.random() * 10,
-                    hum: 50 + Math.random() * 30
-                }))
-            };
-        });
-        setReadings(initialReadings);
-    }, [assets]);
+        if (!farmId || assets.length === 0) return;
 
-    // Live update loop
-    useEffect(() => {
-        if (assets.length === 0) return;
-
-        const interval = setInterval(() => {
+        const loadDbData = async () => {
+            const dbReadings = await getDbSensorReadings(farmId, 50 * assets.length); // Get recent 50 per asset
+            
             setReadings(prev => {
-                const next = { ...prev };
-                Object.keys(next).forEach(key => {
-                    const current = next[key];
-                    // Random walk simulation
-                    const tempChange = (Math.random() - 0.5) * 0.8; 
-                    const humChange = (Math.random() - 0.5) * 2;
-                    const batteryDrain = Math.random() * 0.05; // Slow drain
+                const next: Record<string, SensorReading> = { ...prev };
+                assets.forEach(asset => {
+                    const assetDbReadings = dbReadings.filter(r => r.assetId === asset.id);
+                    // Map DB readings to chart format (oldest to newest)
+                    const history = assetDbReadings.map(r => ({
+                        time: new Date(r.timestamp).toLocaleTimeString(),
+                        temp: r.temperature,
+                        hum: r.humidity
+                    }));
 
-                    const newTemp = Math.max(0, Math.min(50, current.temperature + tempChange));
-                    const newHum = Math.max(0, Math.min(100, current.humidity + humChange));
-                    const newBat = Math.max(0, current.battery - batteryDrain);
+                    // Fill with empty history if no DB data
+                    while (history.length < 10) {
+                        history.unshift({
+                            time: new Date(Date.now() - history.length * 10000).toLocaleTimeString(),
+                            temp: 22,
+                            hum: 60
+                        });
+                    }
 
-                    const newPoint = {
-                        time: new Date().toLocaleTimeString(),
-                        temp: newTemp,
-                        hum: newHum
-                    };
+                    const latest = assetDbReadings[assetDbReadings.length - 1] || { temperature: 22, humidity: 60 };
+                    
+                    if (!batteries[asset.id]) {
+                        setBatteries(b => ({ ...b, [asset.id]: 80 + Math.random() * 20 }));
+                    }
 
-                    next[key] = {
-                        ...current,
-                        temperature: newTemp,
-                        humidity: newHum,
-                        battery: newBat,
-                        history: [...current.history.slice(1), newPoint]
+                    next[asset.id] = {
+                        assetId: asset.id,
+                        temperature: latest.temperature,
+                        humidity: latest.humidity,
+                        battery: batteries[asset.id] || 90,
+                        history: history.slice(-10) // Keep last 10 points for the chart
                     };
                 });
                 return next;
             });
-        }, 3000); // Update every 3 seconds
+        };
+        
+        loadDbData();
+    }, [assets, farmId]);
+
+    // Live update loop (Simulator active)
+    useEffect(() => {
+        if (assets.length === 0 || !farmId || !isSimulatorActive) return;
+
+        // Simulator pushes new data every 15 seconds
+        const interval = setInterval(async () => {
+            const promises = assets.map(async (asset) => {
+                const current = readings[asset.id] || { temperature: 22, humidity: 60, battery: 90 };
+                
+                // Random walk
+                const tempChange = (Math.random() - 0.5) * 1.5; 
+                const humChange = (Math.random() - 0.5) * 3;
+                const batteryDrain = Math.random() * 0.1; 
+
+                const newTemp = Math.max(0, Math.min(50, current.temperature + tempChange));
+                const newHum = Math.max(0, Math.min(100, current.humidity + humChange));
+                
+                setBatteries(b => ({ ...b, [asset.id]: Math.max(0, (b[asset.id] || 90) - batteryDrain) }));
+
+                // INSERT to Supabase (this will also trigger rule evaluation)
+                const savedReading = await insertSensorReading({
+                    assetId: asset.id,
+                    farmId: farmId,
+                    temperature: Number(newTemp.toFixed(1)),
+                    humidity: Number(newHum.toFixed(1))
+                });
+
+                if (savedReading) {
+                    const newPoint = {
+                        time: new Date(savedReading.timestamp).toLocaleTimeString(),
+                        temp: savedReading.temperature,
+                        hum: savedReading.humidity
+                    };
+
+                    setReadings(prev => {
+                        const prevCurrent = prev[asset.id];
+                        if (!prevCurrent) return prev;
+                        return {
+                            ...prev,
+                            [asset.id]: {
+                                ...prevCurrent,
+                                temperature: savedReading.temperature,
+                                humidity: savedReading.humidity,
+                                battery: batteries[asset.id] || 90,
+                                history: [...prevCurrent.history.slice(1), newPoint]
+                            }
+                        };
+                    });
+                }
+            });
+
+            await Promise.all(promises);
+            setDbLastFetch(Date.now()); // trigger AI re-evaluation if needed
+
+        }, 15000); // 15 seconds interval
 
         return () => clearInterval(interval);
-    }, [assets]);
+    }, [assets, farmId, isSimulatorActive, readings]);
 
-    return readings;
+    return { readings, dbLastFetch };
 };
 
 // --- Sub-components ---
@@ -164,6 +217,7 @@ const Dashboard: React.FC<{currentUser?: User}> = ({ currentUser }) => {
     const [assets, setAssets] = useState<Greenhouse[]>([]);
     const [farmName, setFarmName] = useState('Mi Empresa');
     const [isLoading, setIsLoading] = useState(true);
+    const [isSimulatorActive, setIsSimulatorActive] = useState(false);
 
     // Load Dynamic Assets and Farm Name
     useEffect(() => {
@@ -185,8 +239,8 @@ const Dashboard: React.FC<{currentUser?: User}> = ({ currentUser }) => {
         loadData();
     }, [currentUser]);
 
-    // 1. Live Data Simulation (using seeded assets)
-    const readings = useSensorSimulation(assets);
+    // 1. Live Data Simulation (Hybrid)
+    const { readings, dbLastFetch } = useSensorSimulation(assets, currentUser?.role === 'farm_user' ? currentUser.farmId : undefined, isSimulatorActive);
 
     // 2. Filter State
     const [selectedAssetType, setSelectedAssetType] = useState<string>('');
@@ -204,13 +258,21 @@ const Dashboard: React.FC<{currentUser?: User}> = ({ currentUser }) => {
         
         const allPredictions: Prediction[] = [];
         assets.forEach(asset => {
-            const history = generateSimulatedHistory(asset.id);
-            const preds = analyzeAssetRisk(asset, history);
-            const critical = preds.filter(p => p.riskLevel === 'Critical' || p.riskLevel === 'High');
-            allPredictions.push(...critical);
+            const r = readings[asset.id];
+            if (r) {
+                // map reading history back to SimulatedMetric format expected by AI engine
+                const history = r.history.map((pt, i) => ({
+                    hour: i, // simple mapping for the chart hour
+                    temp: pt.temp,
+                    hum: pt.hum
+                }));
+                const preds = analyzeAssetRisk(asset, history);
+                const critical = preds.filter(p => p.riskLevel === 'Critical' || p.riskLevel === 'High');
+                allPredictions.push(...critical);
+            }
         });
         setActiveAlerts(allPredictions);
-    }, [assets]);
+    }, [assets, dbLastFetch, readings]);
 
     // 5. Filter Logic
     const filteredAssets = useMemo(() => {
@@ -256,7 +318,18 @@ const Dashboard: React.FC<{currentUser?: User}> = ({ currentUser }) => {
         <div className="space-y-6 relative">
             {/* --- Control Panel --- */}
             <div className="bg-card p-4 rounded-lg border border-border flex flex-col md:flex-row gap-4 justify-between items-center sticky top-0 z-10 shadow-xl">
-                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto items-center">
+                    <button
+                        onClick={() => setIsSimulatorActive(!isSimulatorActive)}
+                        className={`px-6 py-2.5 rounded-full font-black text-sm tracking-wide flex items-center gap-3 transition-all duration-300 border-2 group ${
+                            isSimulatorActive 
+                            ? 'bg-red-500 text-white border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)] hover:bg-red-600' 
+                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500 hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+                        }`}
+                    >
+                        <div className={`w-3 h-3 rounded-full ${isSimulatorActive ? 'bg-white animate-pulse' : 'bg-emerald-500 group-hover:bg-white'}`}></div>
+                        {isSimulatorActive ? 'SIMULADOR IOT: ON' : 'ACTIVAR SIMULADOR IOT'}
+                    </button>
                     {/* FIXED STATIC OPTIONS SO FILTER DOES NOT DISAPPEAR */}
                     <select 
                         className="bg-slate-700 text-white p-2 rounded border border-slate-600 text-sm focus:ring-primary focus:border-primary min-w-[150px]"

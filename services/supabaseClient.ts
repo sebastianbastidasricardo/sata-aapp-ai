@@ -11,24 +11,13 @@ const DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 // Helper to get settings directly to avoid circular dependency with api.ts
 const getLocalSettings = (): SystemSettings => {
-    try {
-        const item = localStorage.getItem('sata_system_settings');
-        const stored = item ? JSON.parse(item) : {};
-        return { 
-            resendApiKey: stored.resendApiKey || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', 
-            senderEmail: stored.senderEmail || 'onboarding@resend.dev',
-            // Use stored values, or fall back to the hardcoded defaults
-            supabaseUrl: stored.supabaseUrl || DEFAULT_URL,
-            supabaseKey: stored.supabaseKey || DEFAULT_KEY
-        };
-    } catch (error) {
-        return { 
-            resendApiKey: 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', 
-            senderEmail: 'onboarding@resend.dev',
-            supabaseUrl: DEFAULT_URL,
-            supabaseKey: DEFAULT_KEY
-        };
-    }
+    return {
+        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV',
+        senderEmail: import.meta.env.VITE_SENDER_EMAIL || 'onboarding@resend.dev',
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || DEFAULT_URL,
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_KEY,
+        telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || ''
+    };
 };
 
 export const getSupabaseClient = async (): Promise<any | null> => {
@@ -59,7 +48,7 @@ export const getSupabaseClient = async (): Promise<any | null> => {
                 // from trying to polyfill it or causing assignments to the read-only window.fetch property.
                 supabaseInstance = createClient(settings.supabaseUrl.trim(), settings.supabaseKey.trim(), {
                     global: {
-                        fetch: (...args) => window.fetch(...args)
+                        fetch: (...args: any[]) => window.fetch(...(args as [any, any]))
                     }
                 });
                 return supabaseInstance;

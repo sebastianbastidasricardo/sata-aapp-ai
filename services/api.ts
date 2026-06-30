@@ -3,6 +3,7 @@ import { Contact, Greenhouse, AlertRule, User, Farm, PredictionLog, PredictionSe
 import { MOCK_CONTACTS, MOCK_GREENHOUSES, MOCK_RULES, MOCK_USERS, MOCK_FARMS, MOCK_PREDICTION_HISTORY } from '../constants';
 import { sendEmailViaResend, generateAuthEmailHTML, generateInternalInviteHTML } from './emailService';
 import { getSupabaseClient } from './supabaseClient';
+import { sendTelegramMessage } from './telegramService';
 
 // In a real app, these would be API calls. Here we simulate them by using localStorage.
 const apiDelay = 800; 
@@ -40,71 +41,18 @@ const generateId = () => `id_${new Date().getTime()}_${Math.random()}`;
 
 // --- SYSTEM SETTINGS ---
 export const getSystemSettings = async (farmId?: string): Promise<SystemSettings> => {
-    // 1. Get Supabase credentials from LocalStorage (Maestra)
-    const item = localStorage.getItem('sata_system_settings');
-    const stored = item ? JSON.parse(item) : {};
-    
-    const settings: SystemSettings = { 
-        resendApiKey: '', 
-        senderEmail: '',
-        supabaseUrl: stored.supabaseUrl || '',
-        supabaseKey: stored.supabaseKey || '',
-        telegramBotToken: ''
+    const settings: SystemSettings = {
+        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV',
+        senderEmail: import.meta.env.VITE_SENDER_EMAIL || 'onboarding@resend.dev',
+        telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || ''
     };
-
-    // 2. Try to fetch API Keys from Supabase if we have a farmId
-    if (farmId) {
-        const supabase = await getSupabaseClient();
-        if (supabase) {
-            const { data, error } = await supabase
-                .from('system_settings')
-                .select('*')
-                .eq('farm_id', farmId)
-                .single();
-            
-            if (!error && data) {
-                settings.resendApiKey = data.resend_api_key || '';
-                settings.senderEmail = data.sender_email || '';
-                settings.telegramBotToken = data.telegram_bot_token || '';
-            }
-        }
-    }
-
-    // 3. Fallback to LocalStorage if Supabase fetch failed or returned empty
-    if (!settings.resendApiKey) settings.resendApiKey = stored.resendApiKey || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV';
-    if (!settings.senderEmail) settings.senderEmail = stored.senderEmail || 'onboarding@resend.dev';
-    if (!settings.telegramBotToken) settings.telegramBotToken = stored.telegramBotToken || '';
-
     return new Promise(resolve => setTimeout(() => resolve(settings), 100)); 
 };
 
 export const saveSystemSettings = async (settings: SystemSettings, farmId?: string): Promise<void> => {
-    // 1. Save Supabase credentials to LocalStorage (Always local)
-    const localData = {
-        supabaseUrl: settings.supabaseUrl,
-        supabaseKey: settings.supabaseKey,
-        resendApiKey: settings.resendApiKey, // Also keep local for quick access
-        senderEmail: settings.senderEmail,
-        telegramBotToken: settings.telegramBotToken
-    };
-    localStorage.setItem('sata_system_settings', JSON.stringify(localData));
-
-    // 2. Save API Keys to Supabase for persistence across devices
-    if (farmId) {
-        const supabase = await getSupabaseClient();
-        if (supabase) {
-            const dbPayload = {
-                farm_id: farmId,
-                resend_api_key: settings.resendApiKey,
-                sender_email: settings.senderEmail,
-                telegram_bot_token: settings.telegramBotToken,
-                updated_at: new Date().toISOString()
-            };
-            
-            await supabase.from('system_settings').upsert(dbPayload);
-        }
-    }
-
+    console.warn("saveSystemSettings is disabled. Use environment variables (.env) instead.");
     return new Promise(resolve => setTimeout(() => resolve(), apiDelay));
 };
 
@@ -118,58 +66,20 @@ const seedCompanyData = async (farmId: string) => {
     const suffix = `${farmId.substring(0, 4)}_${timestamp}`;
 
     const assets = [
-        { name: 'Invernadero Norte - Cultivo Principal', asset_type: 'Invernadero', location: 'Norte', dev_eui: `AA11${suffix.substring(0,4)}01` },
-        { name: 'Silo Central - Maíz', asset_type: 'Silo', location: 'Centro', dev_eui: `AA11${suffix.substring(0,4)}02` },
-        { name: 'Bodega Sur - Secado', asset_type: 'Otro', custom_type: 'Bodega', location: 'Sur', dev_eui: `AA11${suffix.substring(0,4)}03` }
-    ];
-
-    const contacts = [
-        { name: 'Ing. Agrónomo Jefe', phone: '+573001234567', email: `agronomo.${suffix}@demo.com` },
-        { name: 'Gerente de Planta', phone: '+573007654321', email: `gerente.${suffix}@demo.com` },
-        { name: 'Supervisor de Turno', phone: '+573001112233', email: `supervisor.${suffix}@demo.com` }
-    ];
-
-    const teamUsers = [
-        { 
-            name: 'Admin Operativo', 
-            email: `admin.${suffix}@empresa.com`, 
-            password: 'password', 
-            role: 'farm_user', 
-            status: 'Activo', 
-            company_role: 'admin' 
-        },
-        { 
-            name: 'Miembro Visualizador', 
-            email: `miembro.${suffix}@empresa.com`, 
-            password: 'password', 
-            role: 'farm_user', 
-            status: 'Activo', 
-            company_role: 'member' 
-        }
+        { name: 'Invernadero Norte - Cultivo Principal', type: 'Invernadero', location: 'Norte', dev_eui: `AA11${suffix.substring(0,4)}01` },
+        { name: 'Silo Central - Maíz', type: 'Silo', location: 'Centro', dev_eui: `AA11${suffix.substring(0,4)}02` },
+        { name: 'Bodega Sur - Secado', type: 'Otro', component_type: 'Bodega', location: 'Sur', dev_eui: `AA11${suffix.substring(0,4)}03` }
     ];
 
     if (supabase) {
-        const { data: createdAssets } = await supabase.from('assets').insert(
+        const { data: createdAssets, error: assetErr } = await supabase.from('assets').insert(
             assets.map(a => ({ ...a, farm_id: farmId }))
         ).select();
+        if (assetErr) console.error("Error seeding assets:", assetErr);
 
-        const { data: createdContacts } = await supabase.from('contacts').insert(
-            contacts.map(c => ({ ...c, farm_id: farmId }))
-        ).select();
-
-        await supabase.from('users').insert(
-            teamUsers.map(u => ({ ...u, farm_id: farmId }))
-        );
-
-        if (createdAssets && createdContacts) {
-            await supabase.from('alert_rules').insert([
-                { asset_id: createdAssets[0].id, type: 'Temperatura Máxima', threshold: 30, contact_ids: [createdContacts[0].id, createdContacts[1].id] },
-                { asset_id: createdAssets[0].id, type: 'Temperatura Mínima', threshold: 10, contact_ids: [createdContacts[0].id] },
-                { asset_id: createdAssets[1].id, type: 'Humedad Máxima', threshold: 85, contact_ids: [createdContacts[0].id, createdContacts[2].id] }
-            ]);
-
+        if (createdAssets) {
             const now = new Date();
-            await supabase.from('prediction_logs').insert([
+            const { error: predErr } = await supabase.from('prediction_logs').insert([
                 { 
                     asset_id: createdAssets[0].id, 
                     farm_id: farmId,
@@ -193,34 +103,44 @@ const seedCompanyData = async (farmId: string) => {
                     timestamp: new Date(now.getTime() - 86400000).toISOString()
                 }
             ]);
-
-            await supabase.from('scheduled_reports').insert([
-                {
-                    asset_id: createdAssets[0].id,
-                    farm_id: farmId,
-                    frequency: 'Semanal',
-                    start_date: new Date().toISOString(),
-                    end_date: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                    contact_ids: [createdContacts[0].id]
-                }
-            ]);
+            if (predErr) console.error("Error seeding prediction logs:", predErr);
         }
     } else {
         // LocalStorage Fallback Seeding
-        const newAssets = assets.map(a => ({ ...a, id: generateId(), farmId, assetType: a.asset_type as AssetType, customType: a.custom_type, devEUI: a.dev_eui, location: a.location as AssetLocation }));
+        const newAssets = assets.map(a => ({ ...a, id: generateId(), farmId, assetType: a.type as AssetType, customType: a.component_type, devEUI: a.dev_eui, location: a.location as AssetLocation }));
         const currentAssets = getStore<Greenhouse>('sata_greenhouses', []);
         setStore('sata_greenhouses', [...currentAssets, ...newAssets]);
 
-        const newContacts = contacts.map(c => ({ ...c, id: generateId(), farmId }));
-        const currentContacts = getStore<Contact>('sata_contacts', []);
-        setStore('sata_contacts', [...currentContacts, ...newContacts]);
-        
-        const newUsers = teamUsers.map(u => ({ ...u, id: generateId(), farmId, role: u.role as UserRole, companyRole: u.company_role as CompanyRole }));
-        const currentUsers = getStore<User>('sata_users', []);
-        setStore('sata_users', [...currentUsers, ...newUsers]);
+        const newPreds = [
+            {
+                id: generateId(),
+                assetId: newAssets[0].id,
+                farmId: farmId,
+                diseaseName: 'Moho Gris (Botrytis)',
+                probability: 75,
+                riskLevel: 'High',
+                description: 'Condiciones de alta humedad detectadas en la madrugada.',
+                recommendation: 'Ventilar zona norte y aplicar preventivo.',
+                affectedCrops: ['Tomate', 'Fresa'],
+                timestamp: new Date().toISOString()
+            },
+            {
+                id: generateId(),
+                assetId: newAssets[1].id,
+                farmId: farmId,
+                diseaseName: 'Riesgo de Aflatoxinas',
+                probability: 60,
+                riskLevel: 'Medium',
+                description: 'Ligero aumento de temperatura en núcleo.',
+                recommendation: 'Monitorear ventilación.',
+                affectedCrops: ['Maíz'],
+                timestamp: new Date(new Date().getTime() - 86400000).toISOString()
+            }
+        ];
+        const currentPreds = getStore<PredictionLog>('sata_prediction_logs', []);
+        setStore('sata_prediction_logs', [...currentPreds, ...newPreds]);
     }
 };
-
 
 // --- AUTH API (HYBRID) ---
 
@@ -238,7 +158,20 @@ export const authenticateUser = async (email: string, password_provided: string)
 
     // 1. Try Supabase
     if (supabase) {
-        console.log("☁️ Intentando login con Supabase DB...");
+        console.log("☁️ Intentando login con Supabase Auth...");
+        
+        // Usar Autenticación Nativa Segura
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: password_provided,
+        });
+
+        if (authError || !authData.user) {
+            console.error("Error en Auth:", authError?.message);
+            return null;
+        }
+
+        // Login exitoso, obtener perfil
         const { data, error } = await supabase
             .from('users')
             .select('*')
@@ -246,19 +179,17 @@ export const authenticateUser = async (email: string, password_provided: string)
             .single();
         
         if (!error && data) {
-            if (data.password === password_provided) {
-                if (!checkStatus(data)) return null;
-                
-                return {
-                    id: data.id,
-                    name: data.name,
-                    email: data.email,
-                    role: data.role,
-                    status: data.status,
-                    farmId: data.farm_id,
-                    companyRole: data.company_role
-                };
-            }
+            if (!checkStatus(data)) return null;
+            
+            return {
+                id: data.id,
+                name: data.name,
+                email: data.email,
+                role: data.role,
+                status: data.status,
+                farmId: data.farm_id,
+                companyRole: data.company_role
+            };
         }
         return null; 
     }
@@ -289,12 +220,25 @@ export const registerOwner = async (data: {name: string, email: string, password
 
         if (farmError) throw new Error("Error creando empresa: " + farmError.message);
 
+        // Registro de usuario en Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: normalizedEmail,
+            password: data.password,
+            options: {
+                data: { name: data.name }
+            }
+        });
+
+        if (authError) throw new Error("Error en autenticación: " + authError.message);
+        const authUserId = authData.user?.id;
+
         const { data: userData, error: userError } = await supabase
             .from('users')
             .insert([{
+                id: authUserId, // IMPORTANTE: enlazar con el Auth ID nativo
                 name: data.name,
                 email: normalizedEmail,
-                password: data.password,
+                password: 'Auth-Managed', // Ya no guardamos la contraseña aquí
                 role: 'farm_user',
                 status: 'Activo',
                 farm_id: farmData.id,
@@ -469,56 +413,6 @@ export const updateUserStatus = async (userId: string, newStatus: 'Activo' | 'Bl
     throw new Error("Usuario no encontrado");
 };
 
-// --- DB INITIALIZATION ---
-export const initializeDatabase = async (): Promise<{success: boolean, message: string}> => {
-    const supabase = await getSupabaseClient();
-    if (!supabase) return { success: false, message: "No hay conexión a Supabase. Verifica la configuración." };
-
-    try {
-        const { data: existingAdmin } = await supabase.from('users').select('id').eq('email', 'admin@sata.com').single();
-        if (existingAdmin) return { success: true, message: "El sistema ya está inicializado." };
-
-        console.log("🌱 Sembrando base de datos...");
-
-        const { error: adminError } = await supabase.from('users').insert([{
-            name: 'Admin SATA',
-            email: 'admin@sata.com',
-            password: 'password',
-            role: 'sata_admin',
-            status: 'Activo',
-            company_role: 'admin'
-        }]);
-        if (adminError) throw new Error("Error creando Admin: " + adminError.message);
-
-        await supabase.from('users').insert([{
-            name: 'Técnico Monitoreo',
-            email: 'tech@sata.com',
-            password: 'password',
-            role: 'sata_tech',
-            status: 'Activo',
-            company_role: 'member'
-        }]);
-
-        const { data: farm } = await supabase.from('farms').insert([{ name: 'AgroIndustrias Demo', timezone: 'America/Bogota' }]).select().single();
-        if (farm) {
-            await supabase.from('users').insert([{
-                name: 'Gerente Demo',
-                email: 'gerente@empresa.com',
-                password: 'password',
-                role: 'farm_user',
-                status: 'Activo',
-                farm_id: farm.id,
-                company_role: 'owner'
-            }]);
-            await seedCompanyData(farm.id);
-        }
-
-        return { success: true, message: "Sistema inicializado correctamente. Ahora puedes ingresar con admin@sata.com / password" };
-    } catch (error: any) {
-        return { success: false, message: error.message || "Error al inicializar" };
-    }
-};
-
 // --- GET USERS ---
 export const getUsers = async (farmId?: string): Promise<User[]> => {
     const supabase = await getSupabaseClient();
@@ -555,9 +449,46 @@ export const getUsers = async (farmId?: string): Promise<User[]> => {
 };
 
 
+const globalOtpStorage = new Map<string, { code: string, expires: number }>();
+
+export const send2FAEmail = async (email: string): Promise<void> => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    globalOtpStorage.set(email, { code, expires: Date.now() + 10 * 60 * 1000 }); // 10 min
+    
+    const html = generateAuthEmailHTML(
+        'Tu Código de Seguridad SATA',
+        `Has solicitado iniciar sesión como administrador.<br/>Tu código de verificación de 6 dígitos es:<br/><br/><h2 style="text-align:center;font-size:32px;letter-spacing:4px;color:#0ea5e9;">${code}</h2><br/>Este código expira en 10 minutos.`,
+        '#',
+        ''
+    );
+    try {
+        await sendEmailViaResend({ to: [email], subject: 'Tu Código 2FA - SATA CORP', html });
+        console.log("2FA sent via Resend to", email);
+    } catch (e) {
+        console.error("Error sending 2FA email, falling back to console demo mode:", code);
+    }
+};
+
 export const verify2FA = async (email: string, code: string): Promise<boolean> => {
     console.log(`Verifying 2FA for ${email} with code ${code}`);
-    return new Promise(resolve => setTimeout(() => resolve(code === '123456'), apiDelay));
+    
+    const stored = globalOtpStorage.get(email);
+    if (!stored) {
+        // Fallback for demo environments if no email was sent
+        return new Promise(resolve => setTimeout(() => resolve(code === '123456'), apiDelay));
+    }
+    
+    if (Date.now() > stored.expires) {
+        globalOtpStorage.delete(email);
+        return false;
+    }
+    
+    if (stored.code === code) {
+        globalOtpStorage.delete(email);
+        return true;
+    }
+    
+    return false;
 };
 
 export const requestPasswordReset = async (email: string): Promise<void> => {
@@ -736,8 +667,8 @@ export const getGreenhouses = async (farmId?: string): Promise<Greenhouse[]> => 
                 id: g.id,
                 name: g.name,
                 farmId: g.farm_id,
-                assetType: g.asset_type as AssetType,
-                customType: g.custom_type,
+                assetType: g.type as AssetType,
+                customType: g.component_type,
                 devEUI: g.dev_eui,
                 location: g.location as AssetLocation
             }));
@@ -756,8 +687,8 @@ export const addGreenhouse = async (greenhouse: Omit<Greenhouse, 'id'>): Promise
         const dbPayload = {
             name: greenhouse.name,
             farm_id: greenhouse.farmId,
-            asset_type: greenhouse.assetType,
-            custom_type: greenhouse.customType,
+            type: greenhouse.assetType,
+            component_type: greenhouse.customType,
             dev_eui: greenhouse.devEUI,
             location: greenhouse.location
         };
@@ -767,8 +698,8 @@ export const addGreenhouse = async (greenhouse: Omit<Greenhouse, 'id'>): Promise
                 id: data.id,
                 name: data.name,
                 farmId: data.farm_id,
-                assetType: data.asset_type,
-                customType: data.custom_type,
+                assetType: data.type,
+                customType: data.component_type,
                 devEUI: data.dev_eui,
                 location: data.location
             };
@@ -788,8 +719,8 @@ export const updateGreenhouse = async (updatedGreenhouse: Greenhouse): Promise<G
          const dbPayload = {
             name: updatedGreenhouse.name,
             farm_id: updatedGreenhouse.farmId,
-            asset_type: updatedGreenhouse.assetType,
-            custom_type: updatedGreenhouse.customType,
+            type: updatedGreenhouse.assetType,
+            component_type: updatedGreenhouse.customType,
             dev_eui: updatedGreenhouse.devEUI,
             location: updatedGreenhouse.location
         };
@@ -960,12 +891,23 @@ export const inviteUser = async (user: Omit<User, 'id' | 'status'> & { role?: Us
 
     if (supabase) {
         if (!existingUser) {
+            // 1. Registro en Supabase Auth con contraseña temporal (el usuario la cambiará luego)
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+                email: user.email,
+                password: tempPassword,
+                options: { data: { name: user.name } }
+            });
+            if (authError) throw new Error("Error en Auth al invitar: " + authError.message);
+            const authUserId = authData.user?.id;
+
+            // 2. Registro en tabla pública
             const { data, error } = await supabase
                 .from('users')
                 .insert([{
+                    id: authUserId,
                     name: user.name,
                     email: user.email,
-                    password: tempPassword,
+                    password: 'Auth-Managed', // Ya no guardamos la temporal aquí
                     role: assignedRole,
                     status: 'Pendiente',
                     farm_id: user.farmId,
@@ -1335,4 +1277,141 @@ export const getAlertLogs = async (farmId?: string): Promise<AlertLog[]> => {
     ];
     
     return new Promise(resolve => setTimeout(() => resolve(mockLogs), apiDelay));
+};
+
+// --- REAL-TIME SENSOR DATA (DB-BACKED) ---
+import { DbSensorReading } from '../types';
+
+export const insertSensorReading = async (reading: Omit<DbSensorReading, 'id' | 'timestamp'>) => {
+    const supabase = await getSupabaseClient();
+    if (!supabase) return null;
+
+    const payload = {
+        asset_id: reading.assetId,
+        farm_id: reading.farmId,
+        temperature: reading.temperature,
+        humidity: reading.humidity
+    };
+
+    const { data, error } = await supabase.from('sensor_readings').insert([payload]).select().single();
+    
+    if (error) {
+        console.error("Error inserting sensor reading:", error);
+        return null;
+    }
+
+    // Evaluate rules after inserting
+    await evaluateAlertRules(data.asset_id, data.temperature, data.humidity);
+
+    return {
+        id: data.id,
+        assetId: data.asset_id,
+        farmId: data.farm_id,
+        temperature: data.temperature,
+        humidity: data.humidity,
+        timestamp: data.timestamp
+    };
+};
+
+export const getDbSensorReadings = async (farmId: string, limit: number = 100): Promise<DbSensorReading[]> => {
+    const supabase = await getSupabaseClient();
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+        .from('sensor_readings')
+        .select('*')
+        .eq('farm_id', farmId)
+        .order('timestamp', { ascending: false })
+        .limit(limit);
+
+    if (error || !data) return [];
+
+    return data.map((d: any) => ({
+        id: d.id,
+        assetId: d.asset_id,
+        farmId: d.farm_id,
+        temperature: d.temperature,
+        humidity: d.humidity,
+        timestamp: d.timestamp
+    })).reverse(); // Reverse to get chronological order for charts
+};
+
+const evaluateAlertRules = async (assetId: string, temp: number, hum: number) => {
+    const supabase = await getSupabaseClient();
+    if (!supabase) return;
+
+    // Get active rules for this asset
+    const { data: rules } = await supabase.from('alert_rules').select('*').eq('asset_id', assetId);
+    if (!rules) return;
+
+    for (const rule of rules) {
+        let triggered = false;
+        
+        // Simple logic based on rule type and threshold
+        if (rule.type === 'Temperatura Máxima' && temp > rule.threshold) triggered = true;
+        if (rule.type === 'Temperatura Mínima' && temp < rule.threshold) triggered = true;
+        if (rule.type === 'Humedad Máxima' && hum > rule.threshold) triggered = true;
+        if (rule.type === 'Humedad Mínima' && hum < rule.threshold) triggered = true;
+
+        if (triggered) {
+            // Check if we already alerted recently (e.g., last 5 minutes) to avoid spam
+            const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+            const { data: recentAlerts } = await supabase
+                .from('alert_logs')
+                .select('id')
+                .eq('rule_id', rule.id)
+                .gte('timestamp', fiveMinsAgo)
+                .limit(1);
+
+            if (!recentAlerts || recentAlerts.length === 0) {
+                const alertType = rule.type;
+                const value = alertType.includes('Temperatura') ? temp : hum;
+                
+                // Fetch contact names for log
+                const { data: contacts } = await supabase.from('contacts').select('name').in('id', rule.contact_ids || []);
+                const notifiedNames = contacts ? contacts.map(c => c.name) : [];
+
+                // Create alert log
+                await supabase.from('alert_logs').insert([{
+                    rule_id: rule.id,
+                    asset_id: assetId,
+                    type: alertType,
+                    message: `${alertType} excedida: ${value} (límite: ${rule.threshold})`,
+                    severity: alertType.includes('Máxima') ? 'High' : 'Medium',
+                    contacts_notified: notifiedNames
+                }]);
+                
+                console.log(`🚨 ALERT TRIGGERED: ${alertType} on asset ${assetId}`);
+
+                // Real Telegram message dispatch if configured
+                const tgGroupIds: string[] = Array.isArray(rule.telegram_group_ids) 
+                    ? rule.telegram_group_ids 
+                    : typeof rule.telegram_group_ids === 'string' 
+                        ? JSON.parse(rule.telegram_group_ids) 
+                        : [];
+
+                if (tgGroupIds.length > 0) {
+                    const { data: tgGroups } = await supabase
+                        .from('telegram_groups')
+                        .select('chat_id, name')
+                        .in('id', tgGroupIds);
+
+                    if (tgGroups && tgGroups.length > 0) {
+                        const alertMsg = `⚠️ <b>SATA ALERTA IoT</b>\n\n` +
+                                         `• <b>Tipo:</b> ${alertType}\n` +
+                                         `• <b>Valor actual:</b> ${value}\n` +
+                                         `• <b>Límite configurado:</b> ${rule.threshold}\n` +
+                                         `• <b>Mensaje:</b> ${alertType} excedida (límite: ${rule.threshold})\n` +
+                                         `• <b>Fecha:</b> ${new Date().toLocaleString()}`;
+
+                        for (const tgGroup of tgGroups) {
+                            if (tgGroup.chat_id) {
+                                await sendTelegramMessage(tgGroup.chat_id, alertMsg);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 };

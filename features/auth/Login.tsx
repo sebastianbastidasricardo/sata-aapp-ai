@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
-import { authenticateUser, verify2FA, registerOwner, requestPasswordReset, validateInvitation, completeInvitation, initializeDatabase } from '../../services/api';
+import { authenticateUser, verify2FA, registerOwner, requestPasswordReset, validateInvitation, completeInvitation, send2FAEmail } from '../../services/api';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import { ICONS } from '../../constants';
@@ -22,7 +22,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
-    const [showInitButton, setShowInitButton] = useState(false);
 
     // Form Data
     const [email, setEmail] = useState('');
@@ -62,7 +61,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
     const handleLoginSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        setShowInitButton(false);
         setIsLoading(true);
         
         try {
@@ -80,36 +78,15 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
                     return;
                 }
 
-                // Check for High Security Roles (Admin/Tech) for 2FA
-                if (user.role === 'sata_admin' || user.role === 'sata_tech') {
-                    setTempUser(user);
-                    setView('2fa');
-                    setTwoFACode('');
-                } else {
-                    onLogin(user);
-                }
+                // Temporarily bypass 2FA until a domain is set up
+                onLogin(user);
             } else {
                 setError('Credenciales inválidas o cuenta inexistente.');
-                if (selectedPortal === 'sata_admin') {
-                    setShowInitButton(true);
-                }
             }
         } catch (err: any) {
             setError(err.message || "Error al iniciar sesión.");
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const handleInitDatabase = async () => {
-        setIsLoading(true);
-        const res = await initializeDatabase();
-        setIsLoading(false);
-        if (res.success) {
-            setSuccessMsg(res.message);
-            setShowInitButton(false);
-        } else {
-            setError(res.message);
         }
     };
 
@@ -125,7 +102,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
         if (isValid) {
             onLogin(tempUser);
         } else {
-            setError('Código incorrecto. Intente "123456" para demo.');
+            setError('Código incorrecto o ha expirado. Por favor, solicite uno nuevo.');
         }
     };
 
@@ -210,7 +187,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
         <div className="mt-4 text-center">
             <button 
                 type="button" 
-                onClick={() => { setView('login'); setError(''); setSuccessMsg(''); setShowInitButton(false); }} 
+                onClick={() => { setView('login'); setError(''); setSuccessMsg(''); }} 
                 className="text-primary text-sm hover:underline"
             >
                 ← Volver al inicio de sesión
@@ -224,21 +201,21 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
         <div className="grid grid-cols-3 gap-1 mb-6 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
             <button 
                 type="button"
-                onClick={() => { setSelectedPortal('farm_user'); setError(''); setShowInitButton(false); }}
+                onClick={() => { setSelectedPortal('farm_user'); setError(''); }}
                 className={`text-xs font-bold py-2 rounded-md transition-colors ${selectedPortal === 'farm_user' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
             >
                 Empresa
             </button>
             <button 
                 type="button"
-                onClick={() => { setSelectedPortal('sata_admin'); setError(''); setShowInitButton(false); }}
+                onClick={() => { setSelectedPortal('sata_admin'); setError(''); }}
                 className={`text-xs font-bold py-2 rounded-md transition-colors ${selectedPortal === 'sata_admin' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
             >
                 Admin
             </button>
             <button 
                 type="button"
-                onClick={() => { setSelectedPortal('sata_tech'); setError(''); setShowInitButton(false); }}
+                onClick={() => { setSelectedPortal('sata_tech'); setError(''); }}
                 className={`text-xs font-bold py-2 rounded-md transition-colors ${selectedPortal === 'sata_tech' ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
             >
                 Tech
@@ -281,18 +258,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
             <Button type="submit" className="w-full" isLoading={isLoading} variant={selectedPortal === 'farm_user' ? 'primary' : 'secondary'}>
                 {selectedPortal === 'farm_user' ? 'Ingresar a mi Empresa' : 'Acceso Seguro Corporativo'}
             </Button>
-            
-            {showInitButton && selectedPortal === 'sata_admin' && (
-                <div className="mt-4 text-center">
-                    <button 
-                        type="button"
-                        onClick={handleInitDatabase}
-                        className="text-xs text-orange-400 hover:text-orange-300 underline"
-                    >
-                        ¿Primera vez en la nube? Inicializar Usuarios Base
-                    </button>
-                </div>
-            )}
             
             {selectedPortal === 'farm_user' && (
                 <>
@@ -367,8 +332,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
         <form onSubmit={handle2FASubmit} className="space-y-6">
             {renderHeader('Seguridad Adicional', 'Verificación de dos pasos requerida')}
             <div className="bg-blue-500/10 border border-blue-500/50 p-3 rounded text-sm text-blue-200 mb-4">
-                Por ser usuario de alto privilegio ({selectedPortal === 'sata_admin' ? 'Admin' : 'Tech'}), necesitamos confirmar tu identidad. 
-                <br/><strong>Código Demo: 123456</strong>
+                Por ser usuario de alto privilegio ({selectedPortal === 'sata_admin' ? 'Admin' : 'Tech'}), necesitamos confirmar tu identidad. Te hemos enviado un código de seguridad a tu correo electrónico.
             </div>
             <Input 
                 label="Código de Verificación" 
@@ -376,7 +340,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, initialToken }) => {
                 required 
                 value={twoFACode} 
                 onChange={e => setTwoFACode(e.target.value)} 
-                placeholder="123456"
+                placeholder="000000"
                 className="text-center tracking-[0.5em] font-bold"
             />
             <Button type="submit" className="w-full" isLoading={isLoading}>

@@ -3,16 +3,13 @@ import { SystemSettings } from '../types';
 
 // Helper to get settings directly to avoid circular dependency with api.ts
 const getLocalSystemSettings = (): SystemSettings => {
-    try {
-        const item = localStorage.getItem('sata_system_settings');
-        const stored = item ? JSON.parse(item) : {};
-        return { 
-            resendApiKey: stored.resendApiKey || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', 
-            senderEmail: stored.senderEmail || 'onboarding@resend.dev' 
-        };
-    } catch (e) {
-        return { resendApiKey: 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', senderEmail: 'onboarding@resend.dev' };
-    }
+    return { 
+        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', 
+        senderEmail: import.meta.env.VITE_SENDER_EMAIL || 'onboarding@resend.dev',
+        telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    };
 };
 
 interface EmailPayload {

@@ -72,6 +72,15 @@ export interface SensorReading {
     history: { time: string; temp: number; hum: number }[];
 }
 
+export interface DbSensorReading {
+    id: string;
+    assetId: string;
+    farmId: string;
+    temperature: number;
+    humidity: number;
+    timestamp: string;
+}
+
 export type RiskLevel = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export interface Prediction {

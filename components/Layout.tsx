@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import Chatbot from './Chatbot';
 import { User, Page } from '../types';
 
 interface LayoutProps {
@@ -36,6 +37,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage, setCurrentPage, 
                     </div>
                 </main>
             </div>
+            <Chatbot />
         </div>
     );
 };

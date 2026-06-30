@@ -642,7 +642,7 @@ const DangerZone: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 // Main Settings Manager Component
 const SettingsManager: React.FC<{user: User}> = ({ user }) => {
     const [farms, setFarms] = useState<Farm[]>([]);
-    const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'danger'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'danger'>('general');
 
     const refreshFarms = () => {
         getFarms(user.farmId).then(setFarms);
@@ -661,12 +661,6 @@ const SettingsManager: React.FC<{user: User}> = ({ user }) => {
                 >
                     General
                 </button>
-                <button 
-                    onClick={() => setActiveTab('integrations')}
-                    className={`px-4 py-2 font-bold transition-colors whitespace-nowrap ${activeTab === 'integrations' ? 'text-primary border-b-2 border-primary' : 'text-slate-400 hover:text-white'}`}
-                >
-                    Integraciones
-                </button>
                 {user.companyRole === 'owner' && (
                     <button 
                         onClick={() => setActiveTab('danger')}
@@ -684,10 +678,6 @@ const SettingsManager: React.FC<{user: User}> = ({ user }) => {
                 </>
             )}
             
-            {activeTab === 'integrations' && (
-                <IntegrationSettings currentUser={user} />
-            )}
-
             {activeTab === 'danger' && user.companyRole === 'owner' && (
                 <DangerZone currentUser={user} />
             )}

@@ -118,7 +118,7 @@ export interface ScheduledReport {
 
 export interface SystemSettings {
     resendApiKey: string;
-    senderEmail: string; // e.g., 'onboarding@resend.dev' or 'alerts@sata.com'
+    senderEmail: string; // e.g., 'no-reply@agrosata.online' or 'alerts@sata.com'
     supabaseUrl?: string;
     supabaseKey?: string;
     telegramBotToken?: string;

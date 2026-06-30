@@ -55,9 +55,11 @@ const Chatbot: React.FC = () => {
                 body: JSON.stringify({ message: userMessage.text, history })
             });
 
-            if (!res.ok) throw new Error('Network response was not ok');
-            
             const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Network response was not ok');
+            }
             
             const assistantMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
@@ -66,12 +68,12 @@ const Chatbot: React.FC = () => {
             };
 
             setMessages(prev => [...prev, assistantMessage]);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error sending message:', error);
             const errorMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                text: 'Hubo un error de conexión, por favor intenta nuevamente más tarde.'
+                text: error.message || 'Hubo un error de conexión, por favor intenta nuevamente más tarde.'
             };
             setMessages(prev => [...prev, errorMessage]);
         } finally {

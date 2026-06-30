@@ -5,17 +5,13 @@ import { SystemSettings } from '../types';
 // that can cause the app to fail loading if the module isn't resolved immediately.
 let supabaseInstance: any | null = null;
 
-// DEFAULT CREDENTIALS PROVIDED BY USER
-const DEFAULT_URL = "https://stxgkuqskyvkmxrvbyhs.supabase.co";
-const DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0eGdrdXFza3l2a214cnZieWhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQxODg5NzMsImV4cCI6MjA3OTc2NDk3M30.TbJlIaiNt8r68M1660g34Zo1Ro6vT6Qn1or-6LhRjx8";
-
 // Helper to get settings directly to avoid circular dependency with api.ts
 const getLocalSettings = (): SystemSettings => {
     return {
-        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV',
-        senderEmail: import.meta.env.VITE_SENDER_EMAIL || 'onboarding@resend.dev',
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || DEFAULT_URL,
-        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_KEY,
+        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || '',
+        senderEmail: import.meta.env.VITE_SENDER_EMAIL || '',
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
         telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || ''
     };
 };

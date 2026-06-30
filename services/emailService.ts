@@ -4,8 +4,8 @@ import { SystemSettings } from '../types';
 // Helper to get settings directly to avoid circular dependency with api.ts
 const getLocalSystemSettings = (): SystemSettings => {
     return { 
-        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || 're_fbHZWATr_3ZjLYDg1pHnteKfE6ypo9zzV', 
-        senderEmail: import.meta.env.VITE_SENDER_EMAIL || 'onboarding@resend.dev',
+        resendApiKey: import.meta.env.VITE_RESEND_API_KEY || '', 
+        senderEmail: import.meta.env.VITE_SENDER_EMAIL || '',
         telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
         supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
         supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || ''

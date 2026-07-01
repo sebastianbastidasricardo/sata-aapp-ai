@@ -384,6 +384,7 @@ const ScheduledReportsView: React.FC<{ assets: Greenhouse[], farms: Farm[], cont
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [sendingId, setSendingId] = useState<string | null>(null);
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
     // Form State
     const [newSchedule, setNewSchedule] = useState({
@@ -437,9 +438,16 @@ const ScheduledReportsView: React.FC<{ assets: Greenhouse[], farms: Farm[], cont
     };
 
     const handleDelete = async (id: string) => {
-        if (confirm("¿Está seguro de eliminar esta programación?")) {
+        if (deleteConfirmId === id) {
             await deleteScheduledReport(id);
+            setDeleteConfirmId(null);
             fetchSchedules();
+        } else {
+            setDeleteConfirmId(id);
+            // Auto reset after 4 seconds
+            setTimeout(() => {
+                setDeleteConfirmId(currentId => currentId === id ? null : currentId);
+            }, 4000);
         }
     };
 
@@ -494,7 +502,7 @@ const ScheduledReportsView: React.FC<{ assets: Greenhouse[], farms: Farm[], cont
         { header: 'Destinatarios', accessor: (s: ScheduledReport) => s.contactIds.length },
         { header: 'Vigencia', accessor: (s: ScheduledReport) => `${s.startDate} - ${s.endDate}` },
         { header: 'Acciones', accessor: (s: ScheduledReport) => (
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 items-center">
                  <Button 
                     variant="outline" 
                     size="sm" 
@@ -504,13 +512,23 @@ const ScheduledReportsView: React.FC<{ assets: Greenhouse[], farms: Farm[], cont
                 >
                     Enviar Ahora
                 </Button>
-                <button 
-                    onClick={() => handleDelete(s.id)} 
-                    className="p-1.5 rounded-md text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all duration-200"
-                    title="Eliminar Programación"
-                >
-                    {ICONS.trash}
-                </button>
+                {deleteConfirmId === s.id ? (
+                    <button 
+                        onClick={() => handleDelete(s.id)} 
+                        className="px-2.5 py-1.5 text-xs font-bold rounded-md bg-red-600 hover:bg-red-700 text-white animate-pulse transition-all duration-200"
+                        title="Confirmar eliminación"
+                    >
+                        ¿Confirmar?
+                    </button>
+                ) : (
+                    <button 
+                        onClick={() => handleDelete(s.id)} 
+                        className="p-1.5 rounded-md text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all duration-200"
+                        title="Eliminar Programación"
+                    >
+                        {ICONS.trash}
+                    </button>
+                )}
             </div>
         )}
     ];

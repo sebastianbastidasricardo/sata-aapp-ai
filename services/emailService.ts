@@ -19,27 +19,15 @@ interface EmailPayload {
 }
 
 export const sendEmailViaResend = async (payload: EmailPayload): Promise<{ success: boolean; message: string }> => {
-    const settings = getLocalSystemSettings();
-
-    if (!settings.resendApiKey) {
-        console.error('Falta la API Key de Resend');
-        return { success: false, message: 'Falta la API Key de Resend.' };
-    }
-
     console.log(`[Email Service] Intentando enviar a: ${payload.to.join(', ')}`);
 
     try {
-        // SOLUCIÓN CORS: Usamos corsproxy.io para permitir la petición desde el navegador
-        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://api.resend.com/emails');
-        
-        const res = await fetch(proxyUrl, {
+        const res = await fetch('/api/email', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${settings.resendApiKey}`,
             },
             body: JSON.stringify({
-                from: settings.senderEmail,
                 to: payload.to,
                 subject: payload.subject,
                 html: payload.html,
@@ -48,7 +36,7 @@ export const sendEmailViaResend = async (payload: EmailPayload): Promise<{ succe
 
         if (res.ok) {
             const data = await res.json();
-            console.log('✅ Correo enviado exitosamente vía Resend:', data);
+            console.log('✅ Correo enviado exitosamente:', data);
             return { success: true, message: 'Correo enviado exitosamente.' };
         } else {
             let errorData;
@@ -60,20 +48,11 @@ export const sendEmailViaResend = async (payload: EmailPayload): Promise<{ succe
                 errorData = { message: await res.text() };
             }
             
-            // Check for specific Resend Sandbox Restriction
-            const errorMessage = errorData.message || errorData.name || JSON.stringify(errorData);
+            const errorMessage = errorData.error || errorData.message || JSON.stringify(errorData);
             
-            if (errorMessage.includes("own email address")) {
-                console.warn('⚠️ Limitación Resend (Modo Prueba):', errorMessage);
-                return { 
-                    success: false, 
-                    message: "Modo Prueba: Solo puedes enviar correos a tu propio email registrado. Para enviar a otros, verifica un dominio en Resend." 
-                };
-            }
-            
-            console.error('❌ Error API Resend:', JSON.stringify(errorData, null, 2));
+            console.error('❌ Error enviando correo:', JSON.stringify(errorData, null, 2));
 
-            return { success: false, message: `Error Resend: ${errorMessage}` };
+            return { success: false, message: `${errorMessage}` };
         }
     } catch (error: any) {
         console.error('Error Crítico de Red:', error);

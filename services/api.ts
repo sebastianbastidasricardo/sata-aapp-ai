@@ -543,23 +543,26 @@ export const completeInvitation = async (token: string, password: string): Promi
      const supabase = await getSupabaseClient();
 
      if (supabase) {
-         const { data, error } = await supabase
-            .from('users')
-            .update({ password: password, status: 'Activo' })
-            .eq('email', email)
-            .select()
-            .single();
+         const response = await fetch('/api/complete-invite', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ email, password })
+         });
          
-         if (error || !data) throw new Error("Error al activar usuario en la nube.");
+         const data = await response.json();
+         
+         if (!response.ok) {
+             throw new Error(data.error || "Error al activar usuario en el servidor");
+         }
          
          return {
-             id: data.id,
-             name: data.name,
-             email: data.email,
-             role: data.role,
-             status: data.status,
-             farmId: data.farm_id,
-             companyRole: data.company_role
+             id: data.user.id,
+             name: data.user.name,
+             email: data.user.email,
+             role: data.user.role,
+             status: data.user.status,
+             farmId: data.user.farm_id,
+             companyRole: data.user.company_role
          };
      }
 
@@ -891,32 +894,26 @@ export const inviteUser = async (user: Omit<User, 'id' | 'status'> & { role?: Us
 
     if (supabase) {
         if (!existingUser) {
-            // 1. Registro en Supabase Auth con contraseña temporal (el usuario la cambiará luego)
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: user.email,
-                password: tempPassword,
-                options: { data: { name: user.name } }
-            });
-            if (authError) throw new Error("Error en Auth al invitar: " + authError.message);
-            const authUserId = authData.user?.id;
-
-            // 2. Registro en tabla pública
-            const { data, error } = await supabase
-                .from('users')
-                .insert([{
-                    id: authUserId,
-                    name: user.name,
+            // Call serverless function to create user securely with Admin API
+            const response = await fetch('/api/invite', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     email: user.email,
-                    password: 'Auth-Managed', // Ya no guardamos la temporal aquí
+                    name: user.name,
                     role: assignedRole,
-                    status: 'Pendiente',
-                    farm_id: user.farmId,
-                    company_role: user.companyRole
-                }])
-                .select()
-                .single();
-            if (error) throw new Error("Error invitando usuario: " + error.message);
-            existingUser = data;
+                    farmId: user.farmId,
+                    companyRole: user.companyRole
+                })
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || "Error al invitar usuario en el servidor");
+            }
+            
+            existingUser = data.user;
         }
         
         let html, subject;

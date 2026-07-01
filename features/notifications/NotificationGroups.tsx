@@ -17,6 +17,7 @@ const NotificationGroups: React.FC<NotificationGroupsProps> = ({ currentUser }) 
     const { addToast } = useToast();
     const [groups, setGroups] = useState<TelegramGroup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingGroup, setEditingGroup] = useState<Partial<TelegramGroup> | null>(null);
@@ -53,14 +54,21 @@ const NotificationGroups: React.FC<NotificationGroupsProps> = ({ currentUser }) 
     };
 
     const handleDeleteGroup = async (id: string) => {
-        if (window.confirm('¿Estás seguro de que deseas eliminar este grupo de notificación?')) {
+        if (deleteConfirmId === id) {
             try {
                 await deleteTelegramGroup(id);
                 setGroups(groups.filter(g => g.id !== id));
                 addToast('Grupo eliminado correctamente', 'success');
+                setDeleteConfirmId(null);
             } catch (error) {
                 addToast('Error al eliminar grupo', 'error');
             }
+        } else {
+            setDeleteConfirmId(id);
+            // Auto reset after 4 seconds
+            setTimeout(() => {
+                setDeleteConfirmId(currentId => currentId === id ? null : currentId);
+            }, 4000);
         }
     };
 
@@ -114,13 +122,27 @@ const NotificationGroups: React.FC<NotificationGroupsProps> = ({ currentUser }) 
         {
             header: 'Acciones',
             accessor: (g: TelegramGroup) => (
-                <div className="flex space-x-2">
-                    <button onClick={() => handleEditGroup(g)} className="p-2 text-slate-400 hover:text-primary transition-colors">
+                <div className="flex space-x-2 items-center">
+                    <button onClick={() => handleEditGroup(g)} className="p-2 text-slate-400 hover:text-primary transition-colors" title="Editar Grupo">
                         {ICONS.edit}
                     </button>
-                    <button onClick={() => handleDeleteGroup(g.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
-                        {ICONS.trash}
-                    </button>
+                    {deleteConfirmId === g.id ? (
+                        <button 
+                            onClick={() => handleDeleteGroup(g.id)} 
+                            className="px-2.5 py-1 text-xs font-bold rounded-md bg-red-600 hover:bg-red-700 text-white animate-pulse transition-all duration-200"
+                            title="Confirmar eliminación"
+                        >
+                            ¿Borrar?
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={() => handleDeleteGroup(g.id)} 
+                            className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                            title="Eliminar Grupo"
+                        >
+                            {ICONS.trash}
+                        </button>
+                    )}
                 </div>
             )
         }

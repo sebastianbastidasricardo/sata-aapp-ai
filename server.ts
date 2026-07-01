@@ -2,6 +2,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import chatHandler from "./api/chat";
+import emailHandler from "./api/email";
+
+import inviteHandler from "./api/invite";
+import completeInviteHandler from "./api/complete-invite";
 
 async function startServer() {
   const app = express();
@@ -11,6 +15,9 @@ async function startServer() {
 
   // API route for chatbot mapped for Vercel Serverless Function compatibility
   app.post("/api/chat", chatHandler);
+  app.post("/api/email", emailHandler);
+  app.post("/api/invite", inviteHandler);
+  app.post("/api/complete-invite", completeInviteHandler);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

@@ -131,6 +131,9 @@ export interface AlertLog {
     value: number;
     timestamp: string;
     notifiedContacts: string[];
+    severity?: string;
+    type?: string;
+    message?: string;
 }
 
 export type Page = 'dashboard' | 'contacts' | 'rules' | 'reports' | 'users' | 'settings' | 'predictions' | 'notification_groups';

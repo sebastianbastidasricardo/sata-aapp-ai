@@ -169,7 +169,7 @@ const TechDashboard: React.FC<{ user: User, onLogout: () => void }> = ({ user, o
                             <p className="text-slate-400 text-sm font-bold uppercase">Lecturas Registradas</p>
                             <p className="text-4xl font-bold text-white mt-1">{stats.readings}</p>
                         </div>
-                        <div className="p-3 bg-blue-500/20 rounded-full text-blue-400">{ICONS.database}</div>
+                        <div className="p-3 bg-blue-500/20 rounded-full text-blue-400">{ICONS.server}</div>
                     </div>
                     <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-lg flex items-center justify-between">
                         <div>

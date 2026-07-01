@@ -312,6 +312,7 @@ const SettingsTab: React.FC<{currentUser?: User}> = ({currentUser}) => {
         emailEnabled: false
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [isTestingEmail, setIsTestingEmail] = useState(false);
 
     useEffect(() => {
         const farmId = currentUser?.role === 'farm_user' ? currentUser.farmId : undefined;
@@ -320,6 +321,55 @@ const SettingsTab: React.FC<{currentUser?: User}> = ({currentUser}) => {
             setSettings(sData);
         });
     }, [currentUser]);
+
+    const handleTestEmail = async () => {
+        setIsTestingEmail(true);
+        try {
+            const { sendEmailViaResend } = await import('../../services/emailService');
+            const selectedContacts = contacts.filter(c => settings.dailySummaryContactIds.includes(c.id) && c.email);
+            
+            if (selectedContacts.length === 0) {
+                alert('Selecciona al menos un contacto con email para la prueba.');
+                setIsTestingEmail(false);
+                return;
+            }
+
+            const emails = selectedContacts.map(c => c.email!);
+            
+            const response = await sendEmailViaResend({
+                to: emails,
+                subject: 'SATA - Prueba de Resumen Diario AI',
+                html: `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                        <div style="background-color: #4c1d95; color: white; padding: 20px; text-align: center;">
+                            <h1 style="margin: 0; font-size: 24px;">🤖 SATA AI Predicciones</h1>
+                        </div>
+                        <div style="padding: 20px; background-color: #f8fafc; color: #334155;">
+                            <h2 style="color: #0f172a; margin-top: 0;">Reporte de Prueba</h2>
+                            <p>Hola, esta es una prueba manual del sistema de Resumen Diario de Predicciones AI de SATA.</p>
+                            <p>El sistema automático se encargará de recopilar las alertas detectadas por el modelo y enviar un resumen detallado todos los días.</p>
+                            <div style="background-color: #fff; padding: 15px; border-left: 4px solid #3b82f6; margin: 20px 0;">
+                                <strong>Nota:</strong> Si estás recibiendo este mensaje, tu configuración de correo funciona correctamente.
+                            </div>
+                        </div>
+                        <div style="background-color: #e2e8f0; color: #64748b; padding: 15px; text-align: center; font-size: 12px;">
+                            SATA - Sistema de Alerta Temprana Agrícola<br/>
+                            Reporte generado por IA
+                        </div>
+                    </div>
+                `
+            });
+
+            if (response.success) {
+                alert('Correo de prueba enviado correctamente.');
+            } else {
+                alert('Error al enviar correo: ' + response.message);
+            }
+        } catch (error: any) {
+            alert('Error en la prueba: ' + error.message);
+        }
+        setIsTestingEmail(false);
+    };
 
     const toggleContact = (listKey: 'immediateAlertContactIds' | 'dailySummaryContactIds', contactId: string) => {
         setSettings(prev => {
@@ -369,9 +419,18 @@ const SettingsTab: React.FC<{currentUser?: User}> = ({currentUser}) => {
                     </div>
 
                     <div>
-                        <h4 className="font-bold text-blue-400 mb-2 flex items-center">
-                            <span className="mr-2">📧</span> Resumen Diario por Email
-                        </h4>
+                        <div className="flex justify-between items-center mb-2">
+                            <h4 className="font-bold text-blue-400 flex items-center">
+                                <span className="mr-2">📧</span> Resumen Diario por Email
+                            </h4>
+                            <button
+                                onClick={handleTestEmail}
+                                disabled={isTestingEmail || settings.dailySummaryContactIds.length === 0}
+                                className={`text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors`}
+                            >
+                                {isTestingEmail ? 'Enviando...' : 'Probar Envío Ahora'}
+                            </button>
+                        </div>
                         <p className="text-xs text-slate-500 mb-3">Reporte consolidado de predicciones cada 24h.</p>
                         <div className="bg-slate-900/50 p-3 rounded border border-slate-700 h-48 overflow-y-auto">
                              {contacts.map(c => (
